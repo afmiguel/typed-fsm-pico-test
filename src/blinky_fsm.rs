@@ -1,13 +1,8 @@
 use embedded_hal::digital::OutputPin;
 use typed_fsm::{state_machine, Transition};
 
-#[cfg(rp2350)]
 use rp235x_hal as hal;
-#[cfg(rp2040)]
-use rp2040_hal as hal;
 
-// Define LedPin type alias for both architectures
-#[cfg(any(rp2040, rp2350))]
 pub type LedPin = hal::gpio::Pin<
     hal::gpio::bank0::Gpio15,
     hal::gpio::FunctionSio<hal::gpio::SioOutput>,
@@ -15,7 +10,6 @@ pub type LedPin = hal::gpio::Pin<
 >;
 
 // Helper function to trigger ADC
-// We use direct register access to avoid passing the ADC peripheral around
 fn trigger_adc() {
     unsafe {
         let adc_regs = &(*hal::pac::ADC::ptr());
@@ -26,11 +20,15 @@ fn trigger_adc() {
 // FSM Context
 pub struct BlinkyContext {
     pub led: LedPin,
+    pub wait_ticks: u32, // Counter for the wait state
+    pub last_adc_value: u16, // Stores the last ADC value received
 }
 
 // FSM Events
+#[derive(Clone, Copy, Debug)]
 pub enum BlinkyEvent {
     TimerTick,
+    AdcResult(u16),
 }
 
 // State Machine Definition
@@ -47,6 +45,7 @@ state_machine! {
             process: |_ctx, evt| {
                 match evt {
                     BlinkyEvent::TimerTick => Transition::To(BlinkyFsm::LedOn),
+                    BlinkyEvent::AdcResult(_) => Transition::None, // Ignored in this state
                 }
             }
         },
@@ -60,6 +59,39 @@ state_machine! {
             process: |_ctx, evt| {
                 match evt {
                     BlinkyEvent::TimerTick => Transition::To(BlinkyFsm::LedOff),
+                    BlinkyEvent::AdcResult(val) => {
+                        if *val > 70 {
+                            Transition::To(BlinkyFsm::HighValueWait)
+                        } else {
+                            Transition::None // ADC value okay, no state change
+                        }
+                    }
+                }
+            }
+        },
+
+        // State: High Value Wait (Cooldown)
+        HighValueWait => {
+            entry: |ctx| {
+                let _ = ctx.led.set_low(); // Turn off LED to indicate waiting
+                ctx.wait_ticks = 0;       // Reset counter
+            }
+            process: |ctx, evt| {
+                match evt {
+                    BlinkyEvent::TimerTick => {
+                        ctx.wait_ticks += 1;
+                        // Assuming TimerTick happens every 200ms.
+                        // 2 seconds / 200ms = 10 ticks.
+                        if ctx.wait_ticks >= 10 && ctx.last_adc_value <= 70 {
+                            Transition::To(BlinkyFsm::LedOff) // Time up AND ADC value is safe
+                        } else {
+                            Transition::None // Keep waiting
+                        }
+                    },
+                    BlinkyEvent::AdcResult(val) => {
+                        ctx.last_adc_value = *val; // Update last known ADC value
+                        Transition::None // Stay in this state
+                    },
                 }
             }
         }

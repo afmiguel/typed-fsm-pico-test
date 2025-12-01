@@ -1,234 +1,131 @@
-# ADC Interrupt Demo for Raspberry Pi Pico 2 W
+# Typed FSM on Raspberry Pi Pico 2 W (RP2350)
 
-This project demonstrates interrupt-driven ADC sampling on the RP2350 (Raspberry Pi Pico 2 W) with USB Serial output.
+This project is a **proof-of-concept** for using the [typed-fsm](https://crates.io/crates/typed-fsm) crate in an embedded Rust environment (`no_std`).
 
-## Features
+It demonstrates a robust, interrupt-driven architecture running on the **Raspberry Pi Pico 2 W (RP2350)**, featuring:
+- **Typed State Machine**: Declarative logic controlling the application flow.
+- **Modular Architecture**: Clean separation between Hardware, USB, and Logic.
+- **Interrupts**: ADC and USB handling via hardware interrupts.
+- **Thread Safety**: Safe data exchange using Critical Sections and Mutexes.
 
-- **Non-blocking ADC trigger**: ADC conversion is triggered when GPIO15 goes HIGH
-- **Interrupt-driven reading**: ADC value is read automatically in the ISR (Interrupt Service Routine)
-- **USB Serial output**: ADC readings sent to computer via USB CDC
-- **Dual architecture support**: Works on both ARM (Cortex-M33) and RISC-V (Hazard3)
+---
+
+## Application Behavior
+
+The system implements a "Blinky" state machine with a safety lockout mechanism based on ADC readings.
+
+### States
+1.  **OFF**: LED is off. Waiting for timer tick.
+2.  **ON**: LED is on. ADC is triggered automatically.
+3.  **WAIT_HIGH_VALUE**: Safety lockout state. LED is off. System waits for 2 seconds before resetting.
+
+### Logic Flow
+1.  **Timer Trigger**: Every 200ms, a timer event is sent to the FSM.
+    *   If in **OFF**, it transitions to **ON**.
+    *   If in **ON**, it transitions back to **OFF**.
+2.  **ADC Trigger**: When entering **ON** state, an ADC conversion (Ch0/GPIO26) is triggered.
+3.  **Safety Check**: When ADC conversion completes (ISR), the value is checked:
+    *   If **Value > 70**: Transition to **WAIT_HIGH_VALUE**.
+    *   If **Value <= 70**: Continue normal operation.
+4.  **Cooldown**: In **WAIT_HIGH_VALUE**, the system ignores ADC readings and waits for ~2 seconds (10 ticks) before returning to **OFF**, provided the ADC value has returned to a safe level (<= 70).
+
+---
 
 ## Hardware Setup
 
 | Pin | Function | Description |
 |-----|----------|-------------|
-| **GPIO15** | Digital Output | LED / Trigger (toggles every 200ms) |
-| **GPIO26** | ADC Input | Analog input (Channel 0) - 0-3.3V |
-| **USB** | Serial CDC | Communication with computer |
+| **GPIO15** | Output | **LED**. Blinks to indicate state. (Built-in on Pico 2 W) |
+| **GPIO26** | Input | **ADC Ch0**. Connect a potentiometer or sensor (0-3.3V). |
+| **USB** | Serial | **Telemetry**. Connect to PC to view state logs. |
 
-**Note**: GPIO25 is NOT available on Pico 2 W (used by WiFi module). We use GPIO15 instead.
+---
 
-### Connecting ADC Input
+## Development Environment Setup
 
-Connect to GPIO26:
-- **Option 1**: Potentiometer between 3.3V and GND
-- **Option 2**: Voltage divider (max 3.3V!)
-- **Option 3**: Sensor output (0-3.3V range)
+To replicate this environment and develop effectively, follow these steps.
 
-## Building the Project
+### 1. IDE & Tools
+We recommend **Visual Studio Code** (VS Code) for the best experience.
 
-### Prerequisites
+**Recommended Extensions:**
+- **[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)**: Essential for code completion, type inference, and inline errors.
+- **[Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml)**: For editing `Cargo.toml` files.
+- **[Crates](https://marketplace.visualstudio.com/items?itemName=serayuzgur.crates)**: Helps manage dependency versions.
 
-- Rust toolchain (install from https://rustup.rs)
-- ARM target: `rustup target add thumbv8m.main-none-eabihf`
-- RISC-V target: `rustup target add riscv32imac-unknown-none-elf`
-- `elf2uf2-rs`: `cargo install elf2uf2-rs`
-- `picotool`: Install from https://github.com/raspberrypi/picotool
+### 2. Rust Toolchain
+Install Rust via [rustup](https://rustup.rs/).
 
-### Compile
+Add the target architecture for the RP2350 (Cortex-M33):
+```bash
+rustup target add thumbv8m.main-none-eabihf
+```
+
+### 3. Helper Tools
+Install these cargo subcommands to facilitate building and flashing:
+
+- **elf2uf2-rs**: Converts the compiled ELF binary to UF2 format for drag-and-drop flashing.
+  ```bash
+  cargo install elf2uf2-rs
+  ```
+- **picotool**: Official Raspberry Pi tool for inspecting and flashing binaries (optional but useful).
+  (Install via your system package manager, e.g., `brew install picotool` on macOS)
+
+---
+
+## How to Run
+
+### 1. Build & Flash Automatically
+This project includes a configured runner script. Connect your Pico 2 W while holding the **BOOTSEL** button (so it mounts as a drive).
 
 ```bash
-cargo build --release
+cargo run --release
 ```
+*This command will compile the code, automatically convert it to a `.uf2` file, and attempt to copy it to the mounted RP2350 drive.*
 
-This generates:
-- **ELF file**: `target/thumbv8m.main-none-eabihf/release/tst_rust`
-- **UF2 file**: `target/thumbv8m.main-none-eabihf/release/tst_rust.uf2` (via `cargo run`)
+### 2. Manual Flashing (Fallback)
+If the automatic runner fails:
+1.  Run `cargo build --release`.
+2.  Run `elf2uf2-rs target/thumbv8m.main-none-eabihf/release/tst_rust target/thumbv8m.main-none-eabihf/release/tst_rust.uf2`.
+3.  Drag and drop the generated `.uf2` file to the `RP2350` volume.
 
-## Flashing the Firmware
-
-### Method 1: Using `cargo run` (Automatic UF2 generation + Flash)
-
-1. **Put Pico in BOOTSEL mode**:
-   - Disconnect USB cable
-   - Hold down **BOOTSEL** button on Pico
-   - Connect USB cable (while holding BOOTSEL)
-   - Release BOOTSEL button
-   - Pico will appear as USB drive: `/Volumes/RP2350`
-
-2. **Flash automatically**:
-   ```bash
-   cargo run --release
-   ```
-
-   This will:
-   - Compile the code
-   - Generate UF2 file with correct family ID (rp2350-arm-s)
-   - Copy to Pico
-   - Sync and eject
-   - Pico will reboot automatically
-
-3. **Manually eject if needed**:
-   - If Pico doesn't reboot automatically
-   - Open Finder and eject "RP2350" drive
-   - **OR** drag RP2350 icon to Trash
-
-### Method 2: Manual UF2 Copy
-
-1. **Compile and generate UF2**:
-   ```bash
-   cargo build --release
-   cargo run --release  # Generates .uf2 file
-   ```
-
-2. **Put Pico in BOOTSEL mode** (see Method 1)
-
-3. **Copy UF2 file**:
-   ```bash
-   cp target/thumbv8m.main-none-eabihf/release/tst_rust.uf2 /Volumes/RP2350/
-   ```
-
-4. **Eject drive**:
-   ```bash
-   sync
-   diskutil eject /Volumes/RP2350
-   ```
-
-### Method 3: Using Makefile
+### 3. Monitor Output
+Open a serial terminal to view the FSM state transitions in real-time.
 
 ```bash
-# Compile + generate UF2
-make
+# macOS / Linux
+screen /dev/cu.usbmodem* 115200
 
-# Flash via bootloader (Pico must be in BOOTSEL mode)
-make flash-uf2
-
-# View serial monitor
-make monitor
+# Windows (using PuTTY or similar)
+# Connect to the assigned COM port
+# Baud rate is ignored by USB CDC, but 115200 is standard.
 ```
 
-## Viewing Serial Output
-
-After flashing, the Pico will appear as a USB serial device.
-
-### Find the serial port
-
-```bash
-ls /dev/cu.usbmodem*
-```
-
-You should see: `/dev/cu.usbmodemADC0011`
-
-### Connect with screen
-
-```bash
-screen /dev/cu.usbmodemADC0011 115200
-```
-
-**To exit screen**: Press `Ctrl+A`, then `K`, then `Y`
-
-### Expected Output
-
-```
-=== Pico 2 W ADC Demo ===
-GPIO26 ADC readings will appear below
-
-ADC: 2048 (1650mV)
-ADC: 2051 (1652mV)
-ADC: 2049 (1651mV)
+**Expected Output:**
+```text
+=== Pico 2 W ADC Demo (Shared FSM) ===
+State: ON
+State: OFF
+State: ON
 ...
+(If ADC > 70)
+State: WAIT_HIGH_VALUE
+State: WAIT_HIGH_VALUE
+...
+(After 2s and ADC <= 70)
+State: OFF
 ```
 
-## How It Works
-
-1. **GPIO15** goes HIGH (every 200ms)
-2. **ADC conversion** is triggered on GPIO26 (single-shot)
-3. **~2µs later**: ADC completes, triggers interrupt `ADC_IRQ_FIFO`
-4. **ISR executes**: Reads value from FIFO, stores in `ADC_VALUE`
-5. **Main loop**: Detects new value, sends via USB Serial
-6. **You see**: `ADC: 2048 (1650mV)` on your computer
+---
 
 ## Project Structure
 
-```
-.
-├── src/
-│   └── main.rs           # Main application code
-├── .cargo/
-│   ├── config.toml       # Cargo build configuration
-│   └── runner.sh         # Custom flash script
-├── Cargo.toml            # Dependencies
-├── Makefile              # Build automation
-├── build.rs              # Build script
-└── README.md             # This file
-```
+This project follows a modular architecture to keep `main.rs` clean and readable.
 
-## Troubleshooting
-
-### Pico doesn't reboot after flash
-
-- **Manually eject** the RP2350 drive from Finder
-- Or run: `diskutil eject /Volumes/RP2350`
-
-### No serial port appears
-
-- Check USB cable (must support data, not just power)
-- Try different USB port
-- Reconnect Pico
-
-### Wrong Family ID error
-
-If you see `Family ID 'rp2040' cannot be downloaded`:
-- The UF2 was generated for RP2040 instead of RP2350
-- Use: `picotool uf2 convert` with `--family rp2350-arm-s`
-- Or use `cargo run` which does this automatically
-
-### ADC reads 0 or 4095
-
-- **GPIO26 floating**: Not connected to anything
-- **GPIO26 shorted**: Check connections
-- **Solution**: Connect a voltage source (potentiometer, sensor)
-
-### Compilation errors
-
-```bash
-# Clean and rebuild
-cargo clean
-cargo build --release
-```
-
-## Technical Details
-
-### Interrupt Handling
-
-- **ARM (Cortex-M33)**: Uses NVIC (Nested Vectored Interrupt Controller)
-  - `cortex_m::peripheral::NVIC::unmask()`
-- **RISC-V (Hazard3)**: Uses custom interrupt controller (not standard PLIC)
-  - `riscv::register::mie::set_mext()` - Enable external interrupts
-  - `riscv::interrupt::enable()` - Enable global interrupts
-
-### ADC Specifications
-
-- **Resolution**: 12-bit (0-4095)
-- **Input channels**: GPIO26, GPIO27, GPIO28, GPIO29
-- **Conversion time**: ~2µs (96 ADC clock cycles)
-- **Voltage range**: 0-3.3V (DO NOT EXCEED!)
-
-### USB Serial
-
-- **Class**: CDC (Communications Device Class)
-- **VID:PID**: 0x16c0:0x27dd
-- **Product name**: "Pico 2 W ADC Demo"
-- **Baud rate**: 115200 (actually ignored for USB CDC)
+- **`src/main.rs`**: The application entry point. It orchestrates the initialization, the main loop, and the high-level FSM dispatching.
+- **`src/blinky_fsm.rs`**: Defines the **Finite State Machine** definition using `typed-fsm`. It defines the States (`LedOff`, `LedOn`, `HighValueWait`), Events, and Transitions.
+- **`src/hardware.rs`**: Abstraction layer for **Hardware Configuration**. It sets up the Clocks, PLLs, Timer, GPIOs, and ADC, returning a struct with ready-to-use peripherals.
+- **`src/usb_module.rs`**: Encapsulates the **USB Serial Stack**. It handles global static variables, initialization, and the USB Interrupt Service Routine (ISR).
 
 ## License
-
-MIT OR Apache-2.0
-
-## Credits
-
-Based on [rp-hal](https://github.com/rp-rs/rp-hal) examples.
-
-Copyright (c) 2021–2024 The rp-rs Developers
-Copyright (c) 2025 Raspberry Pi Ltd.
+MIT or Apache-2.0.
