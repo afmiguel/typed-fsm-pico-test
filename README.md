@@ -51,8 +51,8 @@ We recommend **Visual Studio Code** (VS Code) for the best experience.
 **Recommended Extensions:**
 - **[rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)**: Essential for code completion, type inference, and inline errors.
 - **[Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml)**: For editing `Cargo.toml` files.
-- **[Dependi](https://marketplace.visualstudio.com/items?itemName=rust-dependi.dependi)**: Helps manage Rust dependencies.
-- **[Raspberry Pi Pico](https://marketplace.visualstudio.com/items?itemName=ms-vscode.vscode-pico)**: Official extension for Raspberry Pi Pico development, including project creation, flashing, and debugging setup.
+- **[Dependi](https://marketplace.visualstudio.com/items?itemName=fill-labs.dependi)**: Helps manage Rust dependencies.
+- **[Raspberry Pi Pico](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico)**: Official extension for Raspberry Pi Pico development, including project creation, flashing, and debugging setup.
 
 ### 2. Rust Toolchain
 Install Rust via [rustup](https://rustup.rs/).
