@@ -14,7 +14,7 @@ defmt-rtt = "1"
 usb-device = "0.3"
 usbd-serial = "0.2.2"
 heapless = "0.9.2"
-typed-fsm = "0.4.4" 
+typed-fsm = "0.4.7" 
 
 # HAL and Bootloader for RP2350
 rp235x-hal = { version = "0.3", features = ["rt", "critical-section-impl"] }
