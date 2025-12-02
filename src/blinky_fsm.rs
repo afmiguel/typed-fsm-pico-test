@@ -79,6 +79,7 @@ state_machine! {
             process: |ctx, evt| {
                 match evt {
                     BlinkyEvent::TimerTick => {
+                        trigger_adc(); // Trigger ADC to get a new value for exit condition
                         ctx.wait_ticks += 1;
                         // Assuming TimerTick happens every 200ms.
                         // 2 seconds / 200ms = 10 ticks.

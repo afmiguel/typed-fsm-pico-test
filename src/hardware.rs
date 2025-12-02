@@ -13,15 +13,6 @@ use crate::usb_module;
 /// External crystal frequency used by the Raspberry Pi Pico 2 W.
 const XTAL_FREQ_HZ: u32 = 12_000_000u32;
 
-/// Structure containing the fully initialized hardware components
-/// required by the main application logic.
-pub struct Hardware {
-    /// The LED pin (GPIO15 on Pico 2 W), configured as Push-Pull Output.
-    pub led_pin: LedPin,
-    /// The microsecond timer for scheduling tasks.
-    pub timer: hal::Timer<hal::timer::CopyableTimer0>,
-}
-
 /// Initializes the entire hardware stack.
 ///
 /// This function:
@@ -33,8 +24,8 @@ pub struct Hardware {
 /// 6.  Initializes the USB Serial module.
 ///
 /// # Returns
-/// A `Hardware` struct containing the initialized peripherals needed by `main`.
-pub fn init() -> Hardware {
+/// A tuple containing the initialized peripherals needed by `main`: `(LedPin, Timer)`.
+pub fn init() -> (LedPin, hal::Timer<hal::timer::CopyableTimer0>) {
     // 1. Take ownership of raw peripherals
     let mut pac = pac::Peripherals::take().unwrap();
     let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
@@ -102,8 +93,5 @@ pub fn init() -> Hardware {
     );
 
     // Return ready-to-use hardware
-    Hardware {
-        led_pin,
-        timer,
-    }
+    (led_pin, timer)
 }
